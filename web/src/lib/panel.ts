@@ -148,10 +148,10 @@ function sample<T>(pool: T[], dist: number[], rand: number): T {
 // Picking only by information gain made the quiz feel like a form: trust scales and national-mood
 // questions, few about the person's own life. Each question has an appeal score, 1-5: how
 // worthwhile and about their own life it felt to the people it applies to (8 simulated raters,
-// updated with 1,500 first-sight reactions from blind playthroughs). The pick weighs both:
+// updated with 1,500 first-sight reactions from simulated blind playthroughs). The pick weighs both:
 //   utility = z(useful gain) + lambda * z(expected appeal), within the pool,
 // expected appeal = (1 - the predicted "doesn't apply" share) * appeal + that share * naAppeal.
-// lambda 2 was the knee in three blind rounds (12 + 12 + 24 people): soulness 4.7 -> 6.8 of 10,
+// lambda 2 was the knee in three blind rounds (12 + 12 + 24 simulated people): soulness 4.7 -> 6.8 of 10,
 // at -0.4 points of accuracy on the synthetic cohort.
 export type Appeal = { of: (qid: string) => number; lambda: number; naAppeal?: number };
 
