@@ -1,0 +1,31 @@
+<button
+  type="button"
+  class="theme-toggle press -mr-2 grid size-10 place-items-center text-dim transition-colors hover:text-fg"
+  aria-label="Schimbă tema"
+>
+  <!-- Moon: switch to dark -->
+  <svg class="to-dark size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+  </svg>
+  <!-- Sun: switch to light -->
+  <svg class="to-light size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" aria-hidden="true">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" />
+  </svg>
+</button>
+
+<script>
+  const root = document.documentElement;
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  const current = () => (root.dataset.theme as 'light' | 'dark' | undefined) ?? (dark.matches ? 'dark' : 'light');
+
+  document.querySelectorAll<HTMLButtonElement>('.theme-toggle').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const next = current() === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try {
+        localStorage.setItem('theme', next);
+      } catch {}
+    }),
+  );
+</script>

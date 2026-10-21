@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://partidul.ai/sitemap-index.xml

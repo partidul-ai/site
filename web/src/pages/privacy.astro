@@ -1,0 +1,65 @@
+---
+import Wiki from '../layouts/Wiki.astro';
+---
+
+<Wiki title="Confidențialitate — partidul.ai" description="Ce păstrăm despre tine, unde, și cum ștergi.">
+  <article class="max-w-[76ch]">
+    <h1 class="font-display text-[clamp(2.75rem,8vw,5.5rem)] leading-[1.16] font-[850] uppercase">Confidențialitate</h1>
+    <p class="mt-2 font-mono text-[11px] tracking-[0.12em] text-faint uppercase">Actualizat 20 octombrie 2026</p>
+
+    <div class="prose mt-10">
+      <h2>Ce păstrăm</h2>
+      <ul>
+        <li>Județul (sau Diaspora) și grupa de vârstă pe care le alegi.</li>
+        <li>Răspunsurile tale.</li>
+      </ul>
+
+      <h2>Ce nu păstrăm</h2>
+      <ul>
+        <li>
+          Adresa IP. Cloudflare, care găzduiește site-ul, o vede ca la orice site. Noi o folosim doar pe
+          moment, ca să oprim pe cine pornește zeci de chestionare pe minut, și n-o scriem nicăieri.
+        </li>
+        <li>Nimic pentru reclame sau pentru urmărirea vizitelor: fără Google Analytics, fără pixeli.</li>
+      </ul>
+
+      <h2>Unde</h2>
+      <p>
+        Răspunsurile stau într-o bază de date Cloudflare (D1) restrânsă la Uniunea Europeană: e păstrată și
+        rulează doar pe servere din UE. Nu le vindem nimănui.
+      </p>
+
+      <h2>Ce se vede public</h2>
+      <p>
+        Rezultatul tău îl vede doar cine primește linkul de la tine. În rest arătăm doar statistici: pe toată
+        țara și pe județ.
+      </p>
+
+      <h2>Ce facem cu răspunsurile</h2>
+      <p>
+        Le adunăm ca să arătăm ce cred oamenii care au răspuns. Statisticile le publicăm: aici, pe rețele
+        sociale, în articole sau în lucrări științifice. Cercetătorilor le putem da și răspunsurile
+        separate, dar doar județul, vârsta și răspunsurile, fără linkul rezultatului.
+      </p>
+
+      <h2>Cookie-uri</h2>
+      <p>
+        Unul singur, <code>quiz-owner</code>, necesar ca site-ul să meargă, de aceea nu te întrebăm de el.
+        Arată că rezultatul e al tău, ca să-l găsești pe prima pagină, să-l continui sau să-l ștergi.
+        Nu expiră. Browserele țin un cookie cel mult 400 de zile, așa că îl reînnoim de fiecare dată
+        când intri pe site.
+      </p>
+      <p>
+        Județul, vârsta și tema (luminoasă sau întunecată) rămân în browserul tău, ca să nu le alegi din
+        nou. Pe prima pagină, Cloudflare Turnstile verifică că nu ești robot, în locul unui captcha.
+      </p>
+
+      <h2>Cum ștergi</h2>
+      <p>
+        Pe pagina rezultatului tău e butonul „Șterge rezultatul”. Răspunsurile dispar, și din statistici.
+        Merge din browserul în care ai completat, cât timp cookie-ul e acolo. Fără el nu mai e nimic care să lege
+        răspunsurile de tine, nici pentru noi.
+      </p>
+    </div>
+  </article>
+</Wiki>

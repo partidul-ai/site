@@ -1,0 +1,86 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  /** Social preview image, a path under public/ (1200×630). */
+  image?: string;
+  imageAlt?: string;
+  type?: 'website' | 'article';
+  /** Last content change, for articles. */
+  modified?: Date;
+  /** Keep out of search results (placeholders, utility pages). */
+  noindex?: boolean;
+  /** Structured data (schema.org), one object or several. */
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+  /** Your own result (results page): marks <html data-mine> for the copy and buttons only you see. */
+  mine?: boolean;
+}
+
+const {
+  title = 'partidul.ai',
+  description = 'Spune ce merge. Și ce nu.',
+  image = '/og/home.png',
+  imageAlt = 'partidul.ai — Spune ce merge. Și ce nu.',
+  type = 'website',
+  modified,
+  noindex = false,
+  jsonLd,
+  mine = false,
+} = Astro.props;
+// Clean URLs, no trailing slash (build.format: 'file'), so the canonical matches what links point to.
+const path = Astro.url.pathname.replace(/(\/index)?(\.html)?\/?$/, '') || '/';
+const canonical = new URL(path, Astro.site).href;
+const imageUrl = new URL(image, Astro.site).href;
+---
+
+<!doctype html>
+<html lang="ro" data-mine={mine ? '' : undefined}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex, follow" />}
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <meta name="theme-color" content="#f2efe7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c0c0b" media="(prefers-color-scheme: dark)" />
+    <!-- Apply a saved theme before first paint, so there's no flash. -->
+    <script is:inline>
+      try {
+        const t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch {}
+    </script>
+
+    <meta property="og:type" content={type} />
+    <meta property="og:locale" content="ro_RO" />
+    <meta property="og:site_name" content="partidul.ai" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={imageUrl} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={imageAlt} />
+    {modified && <meta property="article:modified_time" content={modified.toISOString()} />}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={imageUrl} />
+    <meta name="twitter:image:alt" content={imageAlt} />
+
+    {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />}
+    <meta name="generator" content={Astro.generator} />
+  </head>
+  <body class="grain min-h-dvh">
+    <slot />
+  </body>
+</html>

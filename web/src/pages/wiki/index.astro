@@ -1,0 +1,51 @@
+---
+import { getCollection } from 'astro:content';
+import Wiki from '../../layouts/Wiki.astro';
+
+const pages = (await getCollection('wiki')).sort((a, b) => a.data.order - b.data.order);
+// Newest page date; null when the collection is empty (Math.max() of nothing is -Infinity,
+// which makes an invalid Date and "Invalid time value" when formatted).
+const updated = pages.length ? new Date(Math.max(...pages.map((p) => p.data.updated.getTime()))) : null;
+const fmt = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
+---
+
+<Wiki
+  title="Wiki — partidul.ai"
+  description="Cum stă România azi: economie, sănătate, educație, infrastructură, justiție și altele, cu surse."
+  image="/og/wiki.png"
+  imageAlt="Wiki partidul.ai — România, pe date."
+  jsonLd={{
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'Wiki partidul.ai — România, pe date',
+    url: new URL('/wiki', Astro.site).href,
+    inLanguage: 'ro',
+    ...(updated && { dateModified: updated.toISOString() }),
+    hasPart: pages.map((p) => ({ '@type': 'Article', headline: p.data.title, url: new URL(`/wiki/${p.id}`, Astro.site).href })),
+  }}
+>
+  {updated && <p class="font-mono text-[11px] tracking-[0.18em] text-dim uppercase">Actualizat {fmt.format(updated)}</p>}
+  <h1 class="mt-6 font-display text-[clamp(3rem,10vw,7rem)] leading-[0.86] font-[850] uppercase">
+    România,<br /><span class="hl">pe date.</span>
+  </h1>
+  <p class="mt-6 max-w-[60ch] text-lg text-dim">
+    Cercetarea din care pornesc întrebările chestionarului: ce merge și ce nu, pe domenii și pe județe. Fiecare cifră are sursă.
+    Dacă vezi ceva greșit sau depășit, spune-ne.
+  </p>
+
+  <ol class="mt-10 grid gap-px overflow-hidden border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
+    {
+      pages.map((p) => (
+        <li class="bg-bg">
+          <a href={`/wiki/${p.id}`} class="group flex h-full flex-col gap-3 p-5 transition-colors hover:bg-raised sm:p-6">
+            <span class="font-mono text-[11px] text-faint">{String(p.data.order).padStart(2, '0')}</span>
+            <span class="font-display text-3xl leading-none font-[800] uppercase group-hover:underline group-hover:decoration-acc-fg group-hover:underline-offset-4">
+              {p.data.title}
+            </span>
+            <span class="text-sm text-dim">{p.data.summary}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ol>
+</Wiki>

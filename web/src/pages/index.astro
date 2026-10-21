@@ -1,0 +1,31 @@
+---
+import Base from '../layouts/Base.astro';
+import Hero from '../components/Hero';
+import SiteHeader from '../components/SiteHeader.astro';
+---
+
+<Base
+  title="partidul.ai — Spune ce merge. Și ce nu."
+  description="Un chestionar anonim despre viața din România."
+  jsonLd={{
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'partidul.ai',
+    url: Astro.site!.href,
+    inLanguage: 'ro',
+    description: 'Un chestionar anonim despre viața din România.',
+  }}
+>
+  <div class="flex h-dvh flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+    <SiteHeader />
+
+    <main class="flex min-h-0 flex-1 flex-col py-4 lg:py-6">
+      <Hero client:load />
+    </main>
+
+    <footer class="mx-auto flex w-full max-w-[1440px] items-baseline justify-between gap-4 px-4 pb-3 font-mono text-[10px] text-dim sm:px-8 sm:pb-5 sm:text-[11px]">
+      <span><span class="whitespace-nowrap">Nu suntem un partid politic.</span> <span class="whitespace-nowrap">Dar ne pasă.</span> <a href="/privacy" class="whitespace-nowrap underline underline-offset-4 decoration-line hover:text-fg">Confidențialitate</a></span>
+      <span class="whitespace-nowrap"><span class="hidden sm:inline">Hartă </span>© EuroGeographics</span>
+    </footer>
+  </div>
+</Base>

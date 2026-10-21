@@ -1,0 +1,94 @@
+---
+import { getCollection, render } from 'astro:content';
+import Wiki from '../../layouts/Wiki.astro';
+
+export async function getStaticPaths() {
+  const pages = (await getCollection('wiki')).sort((a, b) => a.data.order - b.data.order);
+  return pages.map((page, i) => ({
+    params: { slug: page.id },
+    props: { page, prev: pages[i - 1], next: pages[i + 1] },
+  }));
+}
+
+const { page, prev, next } = Astro.props;
+const { Content, headings } = await render(page);
+const toc = headings.filter((h) => h.depth === 2);
+const fmt = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
+const url = new URL(`/wiki/${page.id}`, Astro.site).href;
+---
+
+<Wiki
+  title={`${page.data.title} — Wiki partidul.ai`}
+  description={page.data.summary}
+  type="article"
+  image={`/og/wiki/${page.id}.png`}
+  imageAlt={`${page.data.title} — Wiki partidul.ai`}
+  modified={page.data.updated}
+  jsonLd={[
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: page.data.title,
+      description: page.data.summary,
+      inLanguage: 'ro',
+      dateModified: page.data.updated.toISOString(),
+      image: new URL(`/og/wiki/${page.id}.png`, Astro.site).href,
+      url,
+      mainEntityOfPage: url,
+      isPartOf: { '@type': 'WebSite', name: 'partidul.ai', url: Astro.site!.href },
+      publisher: { '@type': 'Organization', name: 'partidul.ai', url: Astro.site!.href },
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Wiki', item: new URL('/wiki', Astro.site).href },
+        { '@type': 'ListItem', position: 2, name: page.data.title, item: url },
+      ],
+    },
+  ]}
+>
+  <div class="lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12">
+    <aside class="hidden lg:block">
+      {/* Sticky, and scrolls on its own if the contents run taller than the window. */}
+      <div class="sticky top-8 max-h-[calc(100dvh-4rem)] overflow-y-auto pb-4">
+        <a href="/wiki" class="group block border-b border-line pb-4">
+          <span class="font-mono text-[11px] tracking-[0.18em] text-dim uppercase group-hover:text-fg">← Wiki</span>
+          <span class="mt-2 block font-display text-2xl leading-[1.15] font-[800] uppercase">{page.data.title}</span>
+        </a>
+        <nav class="mt-5 font-mono text-[11px] tracking-[0.06em]" aria-label="Cuprins">
+          <p class="mb-3 tracking-[0.18em] text-faint uppercase">Cuprins</p>
+          <ul class="space-y-2">
+            {toc.map((h) => <li><a href={`#${h.slug}`} class="text-dim hover:text-fg">{h.text}</a></li>)}
+          </ul>
+        </nav>
+      </div>
+    </aside>
+
+    <article class="min-w-0 max-w-[76ch]">
+      <a href="/wiki" class="font-mono text-[11px] tracking-[0.18em] text-dim uppercase hover:text-fg lg:hidden">← Wiki</a>
+      <h1 class="mt-3 lg:mt-0 font-display text-[clamp(2.75rem,8vw,5.5rem)] leading-[1.16] font-[850] uppercase">{page.data.title}</h1>
+      <p class="mt-4 text-lg text-dim">{page.data.summary}</p>
+      <p class="mt-2 font-mono text-[11px] tracking-[0.12em] text-faint uppercase">Actualizat {fmt.format(page.data.updated)}</p>
+
+      <div class="prose mt-10">
+        <Content />
+      </div>
+
+      <nav class="mt-16 grid gap-px border border-line bg-line sm:grid-cols-2" aria-label="Pagini">
+        {prev ? (
+          <a href={`/wiki/${prev.id}`} class="bg-bg p-5 hover:bg-raised">
+            <span class="font-mono text-[11px] text-faint uppercase">← Înapoi</span>
+            <span class="mt-1 block font-display text-2xl font-[800] uppercase">{prev.data.title}</span>
+          </a>
+        ) : <span class="bg-bg" />}
+        {next ? (
+          <a href={`/wiki/${next.id}`} class="bg-bg p-5 text-right hover:bg-raised">
+            <span class="font-mono text-[11px] text-faint uppercase">Înainte →</span>
+            <span class="mt-1 block font-display text-2xl font-[800] uppercase">{next.data.title}</span>
+          </a>
+        ) : <span class="bg-bg" />}
+      </nav>
+    </article>
+  </div>
+</Wiki>

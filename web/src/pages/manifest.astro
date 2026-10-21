@@ -1,0 +1,21 @@
+---
+import { getCollection, render } from 'astro:content';
+import Wiki from '../layouts/Wiki.astro';
+
+const [page] = await getCollection('manifest');
+const { Content } = await render(page);
+const fmt = new Intl.DateTimeFormat('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
+---
+
+<Wiki title="Manifest — partidul.ai" description={page.data.summary} type="article" modified={page.data.updated}>
+  <article class="mx-auto min-w-0 max-w-[76ch]">
+    <h1 class="font-display text-[clamp(2.75rem,8vw,5.5rem)] leading-[1.16] font-[850] uppercase">{page.data.title}</h1>
+    <p class="mt-4 font-mono text-[11px] tracking-[0.12em] text-faint uppercase">
+      Versiunea {page.data.version}, actualizată pe {fmt.format(page.data.updated)}
+    </p>
+
+    <div class="prose mt-10">
+      <Content />
+    </div>
+  </article>
+</Wiki>

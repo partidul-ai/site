@@ -1,0 +1,358 @@
+@import "tailwindcss";
+@import "@fontsource-variable/big-shoulders-display";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* Tailwind 4 resets buttons to the default cursor; every button here is clickable. */
+@layer base {
+  button:not(:disabled) { cursor: pointer; }
+}
+
+/* Light: paper and ink, chartreuse as a highlighter. Dark: ink-black poster, chartreuse as signal.
+   Follows the system unless the visitor picked one (data-theme on <html>). */
+:root {
+  --bg: #f2efe7;
+  --fg: #121210;
+  --dim: rgb(18 18 16 / 0.6);
+  --faint: rgb(18 18 16 / 0.42);
+  --line: rgb(18 18 16 / 0.14);
+  --raised: #fbfaf6;
+  --acc: #d4ff3a;
+  --on-acc: #0c0c0b;
+  /* Accent used as ink on the page background: chartreuse is unreadable on paper. */
+  --acc-fg: #121210;
+  /* The radar shape's outline: softer than ink on the light theme. */
+  --shape-line: rgb(18 18 16 / 0.18);
+  /* The radar's value dots: lime on both themes, ringed in ink on paper, in the page colour on dark. */
+  --vertex-ring: #121210;
+  /* Outline of an icon on a selected (inverted, --fg) button: accent on black, black on white. */
+  --on-fg-mark: var(--acc);
+  --dot: rgb(18 18 16 / 0.2);
+  --dot-diaspora: rgb(18 18 16 / 0.28);
+  --dot-hover: rgb(18 18 16 / 0.55);
+  --dot-sel: #121210;
+  /* Fill behind the selected county; dark theme has none. */
+  --zone: #d4ff3a;
+  --grain: 0.05;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c0c0b;
+    --fg: #f1eee6;
+    --dim: rgb(241 238 230 / 0.56);
+    --faint: rgb(241 238 230 / 0.32);
+    --line: rgb(241 238 230 / 0.14);
+    --raised: #171715;
+    --acc-fg: #d4ff3a;
+    --shape-line: #d4ff3a;
+    --vertex-ring: var(--bg);
+    --on-fg-mark: var(--bg);
+    --dot: rgb(241 238 230 / 0.28);
+    --dot-diaspora: rgb(241 238 230 / 0.36);
+    --dot-hover: rgb(241 238 230 / 0.92);
+    --dot-sel: #d4ff3a;
+    --zone: transparent;
+    --grain: 0.07;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c0c0b;
+  --fg: #f1eee6;
+  --dim: rgb(241 238 230 / 0.56);
+  --faint: rgb(241 238 230 / 0.32);
+  --line: rgb(241 238 230 / 0.14);
+  --raised: #171715;
+  --acc-fg: #d4ff3a;
+  --shape-line: #d4ff3a;
+  --vertex-ring: var(--bg);
+  --on-fg-mark: var(--bg);
+  --dot: rgb(241 238 230 / 0.28);
+  --dot-diaspora: rgb(241 238 230 / 0.36);
+  --dot-hover: rgb(241 238 230 / 0.92);
+  --dot-sel: #d4ff3a;
+  --zone: transparent;
+  --grain: 0.07;
+  color-scheme: dark;
+}
+
+/* "Și ce nu.": highlighter stroke on paper, plain chartreuse on black. */
+.hl {
+  color: var(--fg);
+  background: linear-gradient(transparent 12%, var(--acc) 12%, var(--acc) 88%, transparent 88%);
+  box-decoration-break: clone;
+  padding: 0 0.06em;
+  margin-left: -0.06em;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hl { color: var(--acc); background: none; }
+}
+:root[data-theme="dark"] .hl { color: var(--acc); background: none; }
+
+/* Theme toggle shows the theme you'd switch to. */
+.theme-toggle .to-light { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-toggle .to-light { display: block; }
+  :root:not([data-theme="light"]) .theme-toggle .to-dark { display: none; }
+}
+:root[data-theme="dark"] .theme-toggle .to-light { display: block; }
+:root[data-theme="dark"] .theme-toggle .to-dark { display: none; }
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-raised: var(--raised);
+  --color-acc: var(--acc);
+  --color-on-acc: var(--on-acc);
+  --color-acc-fg: var(--acc-fg);
+  --font-display: "Big Shoulders Display Variable", Impact, sans-serif;
+  --font-sans: "Bricolage Grotesque Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--acc);
+  color: var(--on-acc);
+}
+
+/* Film grain so the black reads as printed ink, not a screen. */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Entrance, seen once per visit: headline lines rise out of a mask, the rest fades up. */
+@keyframes line-in {
+  from { transform: translateY(105%); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+}
+.line-mask {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.04em;
+}
+.line-mask > span {
+  display: block;
+  animation: line-in 900ms var(--ease-out) both;
+  animation-delay: calc(80ms + var(--i, 0) * 90ms);
+}
+.fade-up {
+  animation: fade-up 700ms var(--ease-out) both;
+  animation-delay: calc(350ms + var(--i, 0) * 70ms);
+}
+/* Home controls: fade in once we know which to show, after the headline. Plain ease: with
+   ease-out, opacity is nearly full in the first frames and reads as no fade at all. */
+.fade-in {
+  animation: fade 800ms ease both;
+  animation-delay: calc(150ms + var(--i, 0) * 120ms);
+}
+
+/* Listbox opens from the field it belongs to. */
+.listbox {
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+  @starting-style {
+    opacity: 0;
+    transform: translateY(var(--from, 6px)) scale(0.98);
+  }
+}
+
+/* Small horizontal shake: "you skipped this". */
+@keyframes nudge {
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.nudge {
+  animation: nudge 320ms var(--ease-out);
+}
+
+.q-card {
+  transition: opacity 260ms var(--ease-out), transform 320ms var(--ease-out);
+  @starting-style {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+.q-card.q-leave {
+  opacity: 0;
+  transform: translateX(-32px);
+  pointer-events: none;
+  transition-duration: 180ms;
+}
+
+.leave-dialog {
+  transition: opacity 180ms var(--ease-out), transform 220ms var(--ease-out);
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.leave-dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+  transition: opacity 180ms ease;
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.press {
+  transition: transform 140ms var(--ease-out), background-color 160ms ease;
+}
+.press:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line-mask > span,
+  .fade-up {
+    animation: fade 300ms ease both;
+  }
+  .nudge {
+    animation: none;
+  }
+  .q-card,
+  .q-card.q-leave {
+    transform: none;
+    @starting-style { transform: none; }
+  }
+  .listbox {
+    transition: opacity 120ms ease;
+    @starting-style { transform: none; }
+  }
+}
+@keyframes fade {
+  from { opacity: 0; }
+}
+
+/* Wiki articles: rendered markdown. Long tables scroll inside their own box, not the page. */
+.prose {
+  line-height: 1.65;
+  font-size: 1.0625rem;
+}
+.prose > * + * { margin-top: 1em; }
+.prose h2 {
+  margin-top: 2.6em;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  scroll-margin-top: 1.5rem;
+}
+.prose h2:first-child { margin-top: 0; }
+.prose h3 {
+  margin-top: 1.8em;
+  font-weight: 700;
+  font-size: 1.15rem;
+  scroll-margin-top: 1.5rem;
+}
+.prose ul, .prose ol { padding-left: 1.3em; }
+.prose ul { list-style: square; }
+.prose ol { list-style: decimal; }
+.prose li + li { margin-top: 0.35em; }
+.prose li::marker { color: var(--faint); }
+.prose a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.prose a:hover { text-decoration-color: var(--acc-fg); }
+/* Citations: [3] links to item 3 under "Surse". */
+.prose a.cite {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--dim);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.prose a.cite:hover { color: var(--fg); text-decoration: underline; }
+.prose li[id^="sursa-"] {
+  scroll-margin-top: 1.5rem;
+  transition: background-color 600ms ease;
+}
+.prose li[id^="sursa-"]:target {
+  background: color-mix(in oklab, var(--acc) 45%, transparent);
+  transition-duration: 0ms;
+}
+.prose strong { font-weight: 700; }
+.prose blockquote {
+  border-left: 3px solid var(--acc-fg);
+  padding-left: 1em;
+  color: var(--dim);
+}
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.prose th, .prose td {
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.prose th {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.prose hr { border: 0; border-top: 1px solid var(--line); }
+/* The sources list is long and reference-only: set it smaller. */
+.prose h2#surse ~ ol { font-size: 0.85rem; color: var(--dim); }
+
+/* Results page: own result vs someone else's (html[data-mine] is set by the server, from the owner cookie). */
+:root[data-mine] .only-other,
+:root:not([data-mine]) .only-mine {
+  display: none;
+}
+
+/* Padlock buttons on your results wheel. */
+.lock .lock-face {
+  transition: transform 160ms var(--ease-out);
+}
+@media (hover: hover) {
+  .lock:hover .lock-face {
+    transform: scale(1.12);
+  }
+}
+.lock:active .lock-face {
+  transform: scale(0.94);
+}
+.lock:focus-visible .lock-face > rect:first-child {
+  stroke: var(--fg);
+  stroke-width: 2px;
+}

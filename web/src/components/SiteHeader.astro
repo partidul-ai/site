@@ -1,0 +1,24 @@
+---
+// Shared by every page so the header never shifts between the landing page and the wiki.
+import ThemeToggle from './ThemeToggle.astro';
+
+const inWiki = Astro.url.pathname.startsWith('/wiki');
+const inManifest = Astro.url.pathname.startsWith('/manifest');
+---
+
+<header class="mx-auto flex w-full max-w-[1440px] items-center justify-between px-4 pt-4 sm:px-8 sm:pt-6">
+  <a href="/" class="font-display text-xl font-[800] tracking-[0.02em]">partidul<span class="hl">.ai</span></a>
+  <div class="flex items-center gap-4">
+    <a
+      href="/wiki"
+      aria-current={inWiki ? 'page' : undefined}
+      class:list={['font-mono text-[11px] tracking-[0.18em] uppercase hover:text-fg', inWiki ? 'text-fg' : 'text-dim']}
+    >Wiki</a>
+    <a
+      href="/manifest"
+      aria-current={inManifest ? 'page' : undefined}
+      class:list={['font-mono text-[11px] tracking-[0.18em] uppercase hover:text-fg', inManifest ? 'text-fg' : 'text-dim']}
+    >Manifest</a>
+    <ThemeToggle />
+  </div>
+</header>

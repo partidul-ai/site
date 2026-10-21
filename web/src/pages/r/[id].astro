@@ -1,0 +1,105 @@
+---
+import Base from '../../layouts/Base.astro';
+import SiteHeader from '../../components/SiteHeader.astro';
+import Radar from '../../components/Radar';
+import ResultAction from '../../components/ResultAction';
+import { results } from '../../lib/quiz-server';
+import { mockResult } from '../../lib/results-mock';
+import { ownedResult } from '../../lib/owner-cookie';
+import { WHEEL } from '../../lib/wheel';
+import { countyByCode } from '../../data/counties';
+
+export const prerender = false;
+
+const id = Astro.params.id ?? '';
+// /r/demo: a made-up result for working on this page (dev server only).
+const r = id === 'demo' && import.meta.env.DEV ? mockResult(Astro.url.searchParams) : await results(id);
+if (!r) return new Response('Nu am găsit rezultatul.', { status: 404 });
+// Your own result (the owner cookie's): "Cum vezi tu", the comparisons and the buttons. The demo is
+// yours unless ?other=1. The page differs by cookie, so no shared cache may keep it.
+const mine = id === 'demo' && import.meta.env.DEV ? !Astro.url.searchParams.has('other') : (await ownedResult(Astro.cookies)) === id;
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const county = countyByCode(r.county);
+const place = r.county === 'DIASPORA' ? 'diaspora' : (county?.name ?? r.county);
+// Every area, in wheel order; the ones this session got no questions in show locked.
+const shown = WHEEL.map((id) => r.axes.find((a) => a.id === id)!).filter(Boolean);
+// The big score (all the areas) and, for the heading when the legend switches, each line's.
+const scores = r.score;
+const overall = scores.you;
+const hasCohort = shown.some((a) => a.open && a.cohort !== null);
+const fmt = (n: number) => n.toLocaleString('ro-RO');
+// The word after a count (the count is highlighted on its own): "1 om", "19 oameni", and "de oameni"
+// from 20 on: "20 de oameni", "5.312 de oameni".
+const oameniWord = (n: number) => (n === 1 ? ' om' : n >= 20 ? ' de oameni' : ' oameni');
+// We publish the results once this many people have answered; the owner sees how many are left.
+const TARGET = 2_000_000;
+const left = Math.max(0, TARGET - r.people.ro);
+// The link preview: this result's own image.
+const preview = `/r/${id}.png`;
+const title = overall === null ? 'Rezultat — partidul.ai' : `Cum văd România: ${overall}/100 — partidul.ai`;
+---
+
+<Base
+  title={title}
+  description="Cum văd eu lucrurile în România. Spune și tu ce merge. Și ce nu."
+  image={preview}
+  imageAlt={overall !== null ? `Cum văd eu lucrurile: ${overall}/100` : 'partidul.ai'}
+  noindex
+  mine={mine}
+>
+  <div class="flex min-h-dvh flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+    <SiteHeader />
+    {/* Phones: one centered column (score, scale, chart, counts, share). Large screens: score, caption
+        and share on the left, the chart on the right as tall as the screen allows. */}
+    <main class="mx-auto flex w-full max-w-[720px] flex-1 flex-col items-center justify-center gap-5 px-4 py-6 text-center sm:px-8 lg:grid lg:max-w-[1440px] lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:content-center lg:gap-x-16 lg:px-12 lg:text-left">
+      <div class="contents lg:flex lg:flex-col lg:items-start lg:gap-8">
+        <div class="order-1 flex flex-col items-center gap-1 lg:items-start">
+          {/* lg:-mr-16: the heading may run into the column gap, so "Cum văd românii" stays on one line
+              without taking width from the chart. */}
+          <h1 class="font-display text-[clamp(3.25rem,6vw,5.5rem)] leading-[0.95] font-[850] uppercase lg:-mr-16">
+            <span class="only-mine" id="who">Cum vezi tu</span><span class="only-other">Cum văd eu</span><br />lucrurile{overall !== null ? <>: <span class="hl" id="score">{overall}</span><span class="text-[0.45em] text-dim">/100</span></> : '.'}
+          </h1>
+          {/* Your progress: open areas on the wheel, out of all of them. */}
+          <p class="only-mine flex items-baseline gap-2 font-display font-[800] tracking-wide text-dim uppercase tabular-nums">
+            <span><span class="hl text-3xl text-fg">{shown.filter((a) => a.open).length}</span><span class="text-lg">/{shown.length}</span></span>
+            <span class="text-2xl">domenii completate</span>
+          </p>
+        </div>
+
+        {/* The scale: above the chart on phones, under the heading on large screens. */}
+        <p class="order-2 text-sm leading-relaxed text-balance text-dim sm:text-base lg:text-lg">
+          {/* The link, on your own result only: the research the questions come from. */}
+          0 înseamnă că lucrurile merg foarte rău,<br />100 că merg foarte bine. <a href="/wiki" class="only-mine underline underline-offset-2 hover:text-fg">Cum am făcut întrebările?</a>
+        </p>
+
+        <p class="only-mine order-4 text-sm leading-relaxed text-balance text-dim sm:text-base lg:mt-4 lg:text-lg">
+            Comparat cu <span class="hl font-display text-2xl font-[800] tracking-wide lg:text-3xl">{fmt(r.people.ro)}</span>{oameniWord(r.people.ro)} din toată țara{hasCohort && <> și <span class="hl font-display text-2xl font-[800] tracking-wide lg:text-3xl">{fmt(r.people.cohort)}</span>{oameniWord(r.people.cohort)} din {place}</>}.
+            {left > 0 && <><br />Încă <span class="hl font-display text-2xl font-[800] tracking-wide lg:text-3xl">{fmt(left)}</span> și publicăm rezultatele.</>}
+        </p>
+
+        <div class="order-5 flex w-full justify-center lg:justify-start">
+          <ResultAction client:load />
+        </div>
+      </div>
+
+      {/* Hover or tap an area for its numbers. On large screens it fills the screen height. */}
+      <div class="order-3 w-full max-w-[560px] lg:mx-auto lg:max-w-[calc((100dvh-11rem)*1.15)]">
+        <Radar
+          client:load
+          axes={shown.map(({ id, label, open, answered, you, cohort, ro }) => ({ id, label, open, answered, you, cohort, ro }))}
+          names={{ you: 'Rezultat', cohort: hasCohort ? (r.county === 'DIASPORA' ? 'Diaspora' : place) : null, ro: 'România' }}
+          county={r.county}
+        />
+      </div>
+    </main>
+    {/* Your own result: the heading follows the legend ("Cum vede Cluj lucrurile: 54"). */}
+    <script is:inline define:vars={{ scores, names: { cohort: r.county === 'DIASPORA' ? 'diaspora' : place } }}>
+      addEventListener('radar-focus', (e) => {
+        const who = document.getElementById('who'), score = document.getElementById('score');
+        if (who) who.textContent = e.detail === 'you' ? 'Cum vezi tu' : e.detail === 'ro' ? 'Cum văd românii' : `Cum vede ${names[e.detail]}`;
+        if (score) score.textContent = scores[e.detail] ?? '–';
+      });
+    </script>
+  </div>
+</Base>
