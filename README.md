@@ -11,10 +11,10 @@ Live at [partidul.ai](https://partidul.ai).
 ```sh
 cd web && npm install
 npm run dev      # http://localhost:4321
-npm run deploy   # build and deploy to Cloudflare
+npm run build    # build into web/dist
 ```
 
-The root `package.json` forwards `dev`, `build` and `deploy` to `web/`, so they also work from the repo root.
+The root `package.json` forwards `dev` and `build` to `web/`, so they also work from the repo root.
 
 `npm run build` first runs `web/scripts/build-og.mjs`, which renders the social preview images (`public/og/`: one for the site, one for the wiki, one per wiki page, from its title) and the app icons (`public/icons/`). Both folders are generated, not committed; `npm run og` regenerates them on their own.
 
@@ -60,12 +60,13 @@ The Worker is stateless; [Cloudflare D1](https://developers.cloudflare.com/d1/) 
 ```sh
 npm run quiz:sync   # write src/data/quiz.json from questions/ (--preview: .cache/quiz-preview.json instead)
 npm run db:local    # create or migrate the dev server's local database (.wrangler/state)
-npm run db:remote   # apply new migrations to the live EU database, before deploying code that needs them
 npx wrangler d1 execute partidul-ai --remote --command "SELECT COUNT(*) FROM sessions WHERE finished_at IS NOT NULL"
 ```
 
-Local secrets live in `web/.dev.vars` (`TOKEN_SECRET`, `TURNSTILE_SECRET`; in dev, Turnstile's test secret `1x0000000000000000000000000000000AA`); production ones are Worker secrets (`npx wrangler secret put …`). Run `quiz:sync` after changing the question pool, before deploying.
+Local secrets live in `web/.dev.vars` (`TOKEN_SECRET`, `TURNSTILE_SECRET`; in dev, Turnstile's test secret `1x0000000000000000000000000000000AA`); production ones are Worker secrets (`npx wrangler secret put …`). Run `quiz:sync` after changing the question pool and commit `quiz.json` with it; the deploy checks that they match.
 
 ## Deployment
 
-Cloudflare Worker `partidul-ai`, serving `partidul.ai` and `www.partidul.ai` (custom domains in `web/wrangler.jsonc`). `npm run deploy` needs a logged-in Wrangler (`npx --prefix web wrangler login`).
+Cloudflare Worker `partidul-ai`, serving `partidul.ai` and `www.partidul.ai` (custom domains in `web/wrangler.jsonc`).
+
+Every push to `main` deploys through GitHub Actions ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)): it validates the question pool, checks that `quiz.json` matches `questions/`, runs the panel tests, builds, applies new D1 migrations, then deploys. **Run workflow** on the Actions tab redeploys `main` by hand. It needs two repository secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Wrangler's output stays out of the public log; a failure shows its tail with emails and account names blanked out.

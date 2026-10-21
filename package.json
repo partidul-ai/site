@@ -2,7 +2,6 @@
   "private": true,
   "scripts": {
     "dev": "npm --prefix web run dev",
-    "build": "npm --prefix web run build",
-    "deploy": "npm --prefix web run deploy"
+    "build": "npm --prefix web run build"
   }
 }

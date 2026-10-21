@@ -1,0 +1,58 @@
+# Every push to main checks the site and deploys it to Cloudflare. "Run workflow" on the Actions tab
+# redeploys main by hand. Wrangler's own output goes to a file, not the public log: it can name the
+# Cloudflare account. On failure the log shows its tail with emails and account names blanked out.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Check the question pool
+        run: node ../questions/validate.mjs
+
+      - name: Check quiz.json matches questions/
+        run: |
+          npm run --silent quiz:sync > /dev/null
+          git diff --quiet -- src/data/quiz.json || { echo "::error::src/data/quiz.json is out of date: run npm run quiz:sync and commit it"; exit 1; }
+
+      - name: Test the panel
+        run: node --test src/lib/panel.test.ts
+
+      - run: npm run build
+
+      - name: Apply database migrations
+        run: npx wrangler d1 migrations apply partidul-ai --remote > ../wrangler.log 2>&1 || { ../.github/redact-tail.sh ../wrangler.log; exit 1; }
+
+      - name: Deploy
+        run: |
+          npx wrangler deploy > ../wrangler.log 2>&1 || { ../.github/redact-tail.sh ../wrangler.log; exit 1; }
+          grep -o 'Current Version ID: [0-9a-f-]*' ../wrangler.log || true

@@ -10,7 +10,6 @@
     "build": "node --no-warnings=ExperimentalWarning scripts/build-og.mjs && astro build",
     "og": "node --no-warnings=ExperimentalWarning scripts/build-og.mjs",
     "preview": "astro preview",
-    "deploy": "npm run build && wrangler deploy",
     "astro": "astro",
     "generate-types": "wrangler types",
     "quiz:sync": "node scripts/quiz-sync.mjs",
