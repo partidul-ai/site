@@ -1,5 +1,5 @@
-// Who owns a result: the last token of a finished quiz, kept in an HttpOnly cookie (see
-// lib/quiz-storage.ts). Server only.
+// Who owns a result: its owner token (lib/quiz-server.ts ownerTokenFor), kept in an HttpOnly cookie
+// (see lib/quiz-storage.ts). Server only.
 import type { AstroCookies } from 'astro';
 import { ownerOf } from './quiz-server';
 import { OWNER_COOKIE } from './quiz-storage';
@@ -13,8 +13,9 @@ const OLD_RESULT_COOKIE = 'quiz-result';
 
 /** After a quiz or a round finishes, and on every visit: remember that its result is yours, in this browser. */
 export function setOwner(cookies: AstroCookies, url: URL, token: string) {
-  // SameSite=Lax: never sent with another site's POST, so no other page can act as you.
-  cookies.set(OWNER_COOKIE, token, { path: '/', sameSite: 'lax', secure: url.protocol === 'https:', maxAge: MAX_AGE, httpOnly: true });
+  // SameSite=Lax: never sent with another site's POST, so no other page can act as you. Secure
+  // everywhere but the dev server.
+  cookies.set(OWNER_COOKIE, token, { path: '/', sameSite: 'lax', secure: url.hostname !== 'localhost', maxAge: MAX_AGE, httpOnly: true });
   if (cookies.has(OLD_RESULT_COOKIE)) cookies.delete(OLD_RESULT_COOKIE, { path: '/' });
 }
 

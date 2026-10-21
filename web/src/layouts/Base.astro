@@ -78,7 +78,6 @@ const imageUrl = new URL(image, Astro.site).href;
     <meta name="twitter:image:alt" content={imageAlt} />
 
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, '\\u003c')} />}
-    <meta name="generator" content={Astro.generator} />
   </head>
   <body class="grain min-h-dvh">
     <slot />

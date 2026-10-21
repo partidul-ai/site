@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { QuizError, answer } from '../../lib/quiz-server';
 import { setOwner } from '../../lib/owner-cookie';
+import { readJson } from '../../lib/http';
 
 export const prerender = false;
 
@@ -8,11 +9,15 @@ export const prerender = false;
 // The last answer of a quiz (or of a round) also sets the cookie that makes the result yours.
 export const POST: APIRoute = async ({ request, cookies, url }) => {
   try {
-    const { token, choices } = (await request.json()) as { token?: unknown; choices?: unknown };
+    const { token, choices } = await readJson(request);
+    // No question has more than a handful of choices.
+    if (Array.isArray(choices) && choices.length > 32) throw new QuizError('Răspuns invalid.');
     const picked = choices === null ? null : Array.isArray(choices) ? choices.map(String) : [];
     const step = await answer(String(token), picked);
-    if (step.done) setOwner(cookies, url, String(token));
-    return Response.json(step);
+    if (!step.done) return Response.json(step);
+    const { owner, ...shown } = step;
+    if (owner) setOwner(cookies, url, owner);
+    return Response.json(shown);
   } catch (e) {
     if (e instanceof QuizError) return Response.json({ error: e.message }, { status: 400 });
     console.error(e);

@@ -14,6 +14,7 @@ export type StoredSession = {
   uuid: string;
   topics: string[] | null; // axis ids, in pick order
   finished: boolean;
+  pending: string | null; // the token of the question the session waits on (quiz-server.ts answer)
   answers: StoredAnswer[]; // in the order they were given (sessions from before 2026-10-20: no order)
 };
 /** An answer to save. picked null: skipped. axis and outlook as in quiz.json (outlook null when
@@ -25,7 +26,13 @@ export type Expected = (number | null)[] | null;
 export type Totals = { sum: number[]; count: number[]; esum: number[]; ecount: number[] };
 
 const db = () => env.DB;
-const now = () => Date.now();
+// Times are kept to the day (UTC), not the moment: an answer's exact time could tie it to a person
+// who said when they took the quiz.
+const DAY = 24 * 60 * 60 * 1000;
+const today = () => Date.now() - (Date.now() % DAY);
+// Answers one session can hold: the quiz, then every area's rounds with room for skips. Only a
+// replayed token could go past it (quiz-server.ts answer); this is the backstop.
+export const MAX_ANSWERS = 120;
 
 /** A new session's id: 16 hex characters (64 random bits), the result's id in its URL. */
 function newId() {
@@ -38,7 +45,7 @@ export async function createSession(county: string, age: string, arm: (uuid: str
   const uuid = crypto.randomUUID();
   await db()
     .prepare('INSERT INTO sessions (id, county, age, uuid, arm, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, county, age, uuid, arm(uuid), now())
+    .bind(id, county, age, uuid, arm(uuid), today())
     .run();
   return id;
 }
@@ -46,10 +53,10 @@ export async function createSession(county: string, age: string, arm: (uuid: str
 /** The session with its answers, or null if there is none. */
 export async function loadSession(id: string): Promise<StoredSession | null> {
   const [s, a] = await db().batch([
-    db().prepare('SELECT id, county, age, uuid, topics, finished_at FROM sessions WHERE id = ?').bind(id),
+    db().prepare('SELECT id, county, age, uuid, topics, finished_at, pending FROM sessions WHERE id = ?').bind(id),
     db().prepare('SELECT qid, choices, probe FROM answers WHERE session_id = ? ORDER BY step, rowid').bind(id),
   ]);
-  const row = s.results[0] as { id: string; county: string; age: string; uuid: string; topics: string | null; finished_at: number | null } | undefined;
+  const row = s.results[0] as { id: string; county: string; age: string; uuid: string; topics: string | null; finished_at: number | null; pending: string | null } | undefined;
   if (!row) return null;
   return {
     id: row.id,
@@ -58,6 +65,7 @@ export async function loadSession(id: string): Promise<StoredSession | null> {
     uuid: row.uuid,
     topics: row.topics ? JSON.parse(row.topics) : null,
     finished: row.finished_at !== null,
+    pending: row.pending,
     answers: (a.results as { qid: string; choices: string | null; probe: number }[]).map((r) => ({
       qid: r.qid,
       picked: r.choices ? JSON.parse(r.choices) : [],
@@ -70,6 +78,18 @@ export async function setTopics(id: string, topics: string[]) {
   await db().prepare('UPDATE sessions SET topics = ? WHERE id = ?').bind(JSON.stringify(topics), id).run();
 }
 
+/** The question the session now waits on: its token, or null for none. */
+export async function setPending(id: string, token: string | null) {
+  await db().prepare('UPDATE sessions SET pending = ? WHERE id = ?').bind(token, id).run();
+}
+
+/** Take the session's waiting question if it is still `token`'s, so of two requests with the same
+ *  token only one goes on to the next question. false: it was already taken. */
+export async function claimPending(id: string, token: string): Promise<boolean> {
+  const r = await db().prepare('UPDATE sessions SET pending = NULL WHERE id = ? AND pending = ?').bind(id, token).run();
+  return r.meta.changes > 0;
+}
+
 /** Replace the session's expected scores (statements for a batch; none if `x` is null). */
 function expectedStatements(id: string, x: Expected) {
   if (!x) return [];
@@ -80,27 +100,30 @@ function expectedStatements(id: string, x: Expected) {
   ];
 }
 
-/** Save an answer (again: a replayed token overwrites it, keeping its place), and with it the
- *  session's new expected scores if given. One transaction. */
-export async function saveAnswer(id: string, a: NewAnswer, expected: Expected = null) {
-  await db().batch([
+/** Save an answer (again: it overwrites the first, keeping its place), and with it the session's new
+ *  expected scores if given. One transaction. false: the session already holds MAX_ANSWERS, nothing
+ *  saved. */
+export async function saveAnswer(id: string, a: NewAnswer, expected: Expected = null): Promise<boolean> {
+  const [r] = await db().batch([
     db()
       .prepare(
         `INSERT INTO answers (session_id, qid, choices, step, probe, axis, outlook, answered_at)
-         VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(step), 0) + 1 FROM answers WHERE session_id = ?1), ?4, ?5, ?6, ?7)
+         SELECT ?1, ?2, ?3, (SELECT COALESCE(MAX(step), 0) + 1 FROM answers WHERE session_id = ?1), ?4, ?5, ?6, ?7
+         WHERE (SELECT COUNT(*) FROM answers WHERE session_id = ?1) < ?8
          ON CONFLICT (session_id, qid) DO UPDATE SET choices = excluded.choices, outlook = excluded.outlook,
            probe = MAX(probe, excluded.probe), answered_at = excluded.answered_at`,
       )
-      .bind(id, a.qid, a.picked && JSON.stringify(a.picked), a.probe ? 1 : 0, a.axis, a.outlook, now()),
+      .bind(id, a.qid, a.picked && JSON.stringify(a.picked), a.probe ? 1 : 0, a.axis, a.outlook, today(), MAX_ANSWERS),
     ...expectedStatements(id, expected),
   ]);
+  return r.meta.changes > 0;
 }
 
 /** Mark the session finished (once: a replay keeps the first time) and store its expected scores.
  *  From then on its answers and expected scores count in the averages. One transaction. */
 export async function finishSession(id: string, expected: Expected) {
   await db().batch([
-    db().prepare('UPDATE sessions SET finished_at = ? WHERE id = ? AND finished_at IS NULL').bind(now(), id),
+    db().prepare('UPDATE sessions SET finished_at = COALESCE(finished_at, ?), pending = NULL WHERE id = ?').bind(today(), id),
     ...expectedStatements(id, expected),
   ]);
 }

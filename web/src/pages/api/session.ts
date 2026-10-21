@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { QuizError, start } from '../../lib/quiz-server';
 import { isHuman } from '../../lib/turnstile';
+import { ipKey, readJson } from '../../lib/http';
 
 export const prerender = false;
 
@@ -12,15 +13,15 @@ const MIN_MS_ON_PAGE = 600;
 //   website  honeypot: a field people never see, so it should come back empty
 //   elapsed  ms between the landing page loading and the click on "Începe"
 //   human    Cloudflare Turnstile token
-// At most SESSION_LIMIT sessions a minute from one IP. The IP is only used for that and for
-// Turnstile, never stored with the answers.
+// At most SESSION_LIMIT sessions a minute from one IP (an IPv6 one by its /64). The IP is only used
+// for that and for Turnstile, never stored with the answers.
 export const POST: APIRoute = async ({ request }) => {
   try {
     const ip = request.headers.get('cf-connecting-ip');
-    if (ip && !(await env.SESSION_LIMIT.limit({ key: ip })).success) {
+    if (ip && !(await env.SESSION_LIMIT.limit({ key: ipKey(ip) })).success) {
       return Response.json({ error: 'Prea multe încercări. Mai încearcă peste un minut.' }, { status: 429 });
     }
-    const { judet, varsta, website, elapsed, human } = (await request.json()) as Record<string, unknown>;
+    const { judet, varsta, website, elapsed, human } = await readJson(request);
     if (website || typeof elapsed !== 'number' || elapsed < MIN_MS_ON_PAGE) {
       // Same answer as any other failure: nothing to learn for whoever is probing.
       return Response.json({ error: 'Ceva n-a mers. Încearcă din nou.' }, { status: 400 });

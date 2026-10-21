@@ -13,8 +13,10 @@ export const GET: APIRoute = async ({ cookies, url }) => {
   try {
     const mine = await ownedFinished(token);
     if (!mine && token) clearOwner(cookies);
-    if (mine) setOwner(cookies, url, token);
-    return Response.json(mine ?? { result: null }, { headers });
+    if (!mine) return Response.json({ result: null }, { headers });
+    const { owner, ...shown } = mine;
+    setOwner(cookies, url, owner);
+    return Response.json(shown, { headers });
   } catch (e) {
     console.error(e);
     return Response.json({ result: null }, { status: 502, headers });

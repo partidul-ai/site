@@ -139,21 +139,23 @@ const groupOf = (id: string) => QUESTIONS[id]?.group;
 // Topic rounds (unlocking an area from the results page): x the area, c answers there so far,
 // g whether one of them has a score, k the session's "<county>/<age>".
 // pr: this question is a probe.
-type Token = { s: string; q: string; n: number; e: number; v?: number; t?: number[]; pr?: boolean; x?: number; c?: number; g?: boolean; k?: string };
+// o: an owner token (ownerTokenFor), which answers nothing and proves the result is yours.
+type Token = { s: string; q: string; n: number; e: number; v?: number; t?: number[]; pr?: boolean; x?: number; c?: number; g?: boolean; k?: string; o?: 1 };
 const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64 = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 let keyPromise: Promise<CryptoKey> | undefined;
-const hmacKey = () =>
-  (keyPromise ??= crypto.subtle.importKey('raw', new TextEncoder().encode(env.TOKEN_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']));
+const hmacKey = () => {
+  if (!env.TOKEN_SECRET) throw new Error('TOKEN_SECRET is not set');
+  return (keyPromise ??= crypto.subtle.importKey('raw', new TextEncoder().encode(env.TOKEN_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']));
+};
 
 async function sign(t: Token) {
   const body = b64(new TextEncoder().encode(JSON.stringify(t)));
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', await hmacKey(), new TextEncoder().encode(body)));
   return `${body}.${b64(mac)}`;
 }
-// A finished quiz's last token also proves the result is yours, for unlocking more areas later,
-// with no end date: it lasts as long as the owner cookie does (lib/owner-cookie.ts; until
-// 2026-10-21, 90 days).
+/** The signed token, or null. owner: don't check its end date (owner tokens, and a session's
+ *  waiting question, which never expire). */
 async function verify(token: string, owner = false): Promise<Token | null> {
   const [body, mac] = token.split('.');
   if (!body || !mac) return null;
@@ -169,24 +171,34 @@ async function verify(token: string, owner = false): Promise<Token | null> {
   return owner || t.e > Date.now() ? t : null;
 }
 
-/** The session a finished quiz's token proves is yours, or null. */
-export const ownerOf = async (token: string) => (token ? ((await verify(token, true))?.s ?? null) : null);
+// Who owns a result: whoever holds its owner token, which finishing the quiz or a round puts in an
+// HttpOnly cookie (lib/owner-cookie.ts), with no end date. Until 2026-10-21 the cookie held the
+// quiz's or the round's last token instead; those still count, and /api/me swaps them for an owner
+// token. No other token does: the ones a quiz in progress keeps in the page prove nothing.
+const ownerTokenFor = (session: string) => sign({ s: session, q: '', n: 0, e: 0, o: 1 });
+const provesOwner = (t: Token) => t.o === 1 || (t.q !== TOPIC_Q && (t.x !== undefined ? (t.c ?? 0) >= ROUND - 1 : stepOf(t) >= TOTAL - 1));
 
-/** The finished result an owner token is for, with how many areas it has open (a score in them),
- *  or null if it has none (expired token, result deleted). */
-export async function ownedFinished(token: string): Promise<{ result: string; done: number; total: number } | null> {
-  const id = await ownerOf(token);
-  if (!id) return null;
-  const s = await store.loadSession(id); // throws if D1 is unreachable: no answer, rather than a wrong "you have none"
+/** The session an owner token proves is yours, or null. */
+export async function ownerOf(token: string): Promise<string | null> {
+  const t = token ? await verify(token, true) : null;
+  return t && provesOwner(t) ? t.s : null;
+}
+
+/** The finished result an owner token is for, with how many areas it has open (a score in them)
+ *  and the owner token to keep for it, or null if it has none (not an owner token, result deleted). */
+export async function ownedFinished(token: string): Promise<{ result: string; done: number; total: number; owner: string } | null> {
+  const t = token ? await verify(token, true) : null;
+  if (!t || !provesOwner(t)) return null;
+  const s = await store.loadSession(t.s); // throws if D1 is unreachable: no answer, rather than a wrong "you have none"
   if (!s?.finished) return null;
   const { count } = axisTotals(s.answers);
-  return { result: id, done: count.filter((c) => c > 0).length, total: A };
+  return { result: t.s, done: count.filter((c) => c > 0).length, total: A, owner: t.o ? token : await ownerTokenFor(t.s) };
 }
 
 // --- quiz -----------------------------------------------------------------------------
 export type Step =
   | { done: false; token: string; n: number; total: number; question: Omit<Question, 'choices' | 'domain' | 'tier'> & { id: string; minSelect?: number; choices: { id: string; label: string }[] } }
-  | { done: true; n: number; total: number; result: string };
+  | { done: true; n: number; total: number; result: string; owner?: string }; // owner: for the cookie, never sent to the page
 
 // --- the panel ------------------------------------------------------------------------
 // Static assets (public/panel/), read once per isolate through the ASSETS binding.
@@ -260,19 +272,26 @@ async function pickQuestion(session: string, o: PickOptions): Promise<{ id: stri
   return { id, probe };
 }
 
-/** The step asking `id`, its token carrying `extra`. */
+/** The step asking `id`, its token carrying `extra`: from now on the question the session waits on. */
 async function ask(session: string, id: string, n: number, total: number, extra: Partial<Token>): Promise<Step> {
-  const q = QUESTIONS[id];
   const token = await sign({ ...extra, s: session, q: id, n, v: 3, e: Date.now() + TOKEN_TTL });
-  const { domain, tier, choices, ...shown } = q;
-  return { done: false, token, n, total, question: { id, ...shown, choices: choices.map(({ id, label }) => ({ id, label })) } };
+  await store.setPending(session, token);
+  return shown(token, id, n, total);
+}
+
+/** What the page shows for a token asking `id`. */
+function shown(token: string, id: string, n: number, total: number): Step {
+  if (id === TOPIC_Q) return topicsStep(token, n);
+  const { domain, tier, choices, ...rest } = QUESTIONS[id];
+  return { done: false, token, n, total, question: { id, ...rest, choices: choices.map(({ id, label }) => ({ id, label })) } };
 }
 
 /** The first step: pick 3 topics. Shown like a multiple-choice question that needs exactly 3.
  *  n is 0, or a later step for a session that got to its topics without picking them (an older
  *  token's order). */
-async function askTopics(session: string, n: number): Promise<Step> {
-  const token = await sign({ s: session, q: TOPIC_Q, n, v: 3, e: Date.now() + TOKEN_TTL });
+const askTopics = (session: string, n: number) => ask(session, TOPIC_Q, n, TOTAL, {});
+
+function topicsStep(token: string, n: number): Step {
   return {
     done: false,
     token,
@@ -290,14 +309,14 @@ async function askTopics(session: string, n: number): Promise<Step> {
   };
 }
 
-/** The topic pick, stored with the session. */
-async function pickTopics(t: Token, picked: string[] | null): Promise<Step> {
+/** Throws unless `picked` is a valid topic pick. */
+function checkTopics(picked: string[] | null): asserts picked is string[] {
   const chosen = TOPICS.filter((x) => picked?.includes(x.id));
   if (!picked || chosen.length !== PICK || new Set(picked).size !== PICK) throw new QuizError(`Alege ${PICK} teme.`);
-  await store.setTopics(t.s, picked);
-  // They rotate in the order you picked them.
-  return next(t.s, t.n + 1, picked.map((id) => AXIS_BY_ID.get(id)!));
 }
+
+/** The session's topics as axis indices, in the order they rotate (the order picked). */
+const topicAxes = (topics: string[] | null) => (topics ?? []).map((id) => AXIS_BY_ID.get(id)!);
 
 /** Step n. */
 async function next(session: string, n: number, topics: number[]): Promise<Step> {
@@ -327,24 +346,33 @@ async function next(session: string, n: number, topics: number[]): Promise<Step>
 // answer; the averages get each scored answer as it comes, so leaving halfway loses nothing.
 export const ROUND = 5;
 
-export async function startRound(token: string, axisId: string): Promise<Step> {
-  const t = await verify(token, true);
-  if (!t) throw new QuizError('Sesiunea a expirat. Completează din nou chestionarul.');
-  const x = AXIS_BY_ID.get(axisId);
-  const s = await store.loadSession(t.s);
-  if (x === undefined || !s?.finished) throw new QuizError('Nu se poate.');
+type Round = { x: number; c: number; g: boolean; k: string };
+
+/** Where a finished session stands in area x: answers there so far, and whether one has a score. */
+function roundOf(s: StoredSession, x: number): Round {
   const answers = s.answers.filter((a) => QUESTIONS[a.qid]?.axis === x && a.picked.length);
-  const c = answers.length;
-  const g = answers.some((a) => outlookOf(a.qid, a.picked) !== null);
-  return roundNext(t.s, { x, c, g, k: `${s.county}/${s.age}` });
+  return { x, c: answers.length, g: answers.some((a) => outlookOf(a.qid, a.picked) !== null), k: `${s.county}/${s.age}` };
 }
 
-async function roundNext(session: string, r: { x: number; c: number; g: boolean; k: string }): Promise<Step> {
-  const done: Step = { done: true, n: r.c, total: ROUND, result: session };
-  if (r.c >= ROUND && r.g) return done;
+export async function startRound(token: string, axisId: string): Promise<Step> {
+  const id = await ownerOf(token);
+  if (!id) throw new QuizError('Sesiunea a expirat. Completează din nou chestionarul.');
+  const x = AXIS_BY_ID.get(axisId);
+  const s = await store.loadSession(id);
+  if (x === undefined || !s?.finished) throw new QuizError('Nu se poate.');
+  return roundNext(id, roundOf(s, x));
+}
+
+async function roundNext(session: string, r: Round): Promise<Step> {
+  if (r.c >= ROUND && r.g) return roundDone(session, r.c);
   // The round's fifth question is its probe in the control and experiment arms (see the header).
   const got = await pickQuestion(session, { axis: r.x, scoredFirst: !r.g || r.c < 2, profileFirst: true, tradeoff: r.c === 2 && r.g, probeStep: r.c === ROUND - 1 });
-  return got ? ask(session, got.id, Math.min(r.c, ROUND - 1), ROUND, { ...r, ...(got.probe && { pr: true }) }) : done;
+  return got ? ask(session, got.id, Math.min(r.c, ROUND - 1), ROUND, { ...r, ...(got.probe && { pr: true }) }) : roundDone(session, r.c);
+}
+
+async function roundDone(session: string, n: number): Promise<Step> {
+  await store.setPending(session, null);
+  return { done: true, n, total: ROUND, result: session, owner: await ownerTokenFor(session) };
 }
 
 export class QuizError extends Error {}
@@ -357,27 +385,84 @@ export async function start(county: string, age: string): Promise<Step> {
 /** A token's step in this order (see Token.v). */
 const stepOf = (t: Token) => (t.v === 3 ? t.n : t.v === 2 ? (t.n < GENERAL_COUNT ? t.n + 1 : t.n) : t.n >= 5 ? t.n + 1 : t.n);
 
+// Only the question a session waits on can be answered, and only once: its token is the session's
+// `pending`. Any other token of the session (the same request sent twice, a page left open in
+// another tab, an older token kept to answer more than 20 questions) answers nothing and gets the
+// question the session waits on, so the person carries on where the quiz is, without an error. A
+// waiting question never expires: its token is issued again if needed.
+
+/** Whether this token may answer now; if so, the session's waiting question is taken. */
+async function current(s: StoredSession, t: Token, token: string): Promise<boolean> {
+  if (s.pending) return s.pending === token && store.claimPending(s.id, token);
+  // No question on record: a session started before `pending` existed, or one whose last request
+  // failed halfway. The token may answer if it hasn't expired and is the next one in order.
+  if (t.e <= Date.now()) return false;
+  if (t.q === TOPIC_Q) return !s.finished && !s.topics;
+  if (s.answers.some((a) => a.qid === t.q)) return false;
+  if (t.x !== undefined) return s.finished && roundOf(s, t.x).c === (t.c ?? 0);
+  return !s.finished && s.answers.length === stepOf(t) - 1;
+}
+
+/** What a token that may not answer gets: the question its session waits on, or the next one
+ *  from where the session is. Read again: a request with the same token may have just moved it on. */
+async function resume(t: Token): Promise<Step> {
+  let s = await store.loadSession(t.s);
+  // Waiting on nothing mid-quiz: most likely another request with this token is picking the next
+  // question right now. Give it a moment, so both get the same one.
+  for (let i = 0; i < 5 && s && !s.pending && !s.finished; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    s = await store.loadSession(t.s);
+  }
+  if (!s) throw new QuizError('Sesiunea a expirat. Reia chestionarul.');
+  const p = s.pending ? await verify(s.pending, true) : null;
+  if (p && (p.q === TOPIC_Q || QUESTIONS[p.q])) {
+    if (p.e > Date.now()) return shown(s.pending!, p.q, p.n, p.x !== undefined ? ROUND : TOTAL);
+    const { e, ...rest } = p;
+    return ask(s.id, p.q, p.n, p.x !== undefined ? ROUND : TOTAL, rest);
+  }
+  if (t.x !== undefined && s.finished) return roundNext(s.id, roundOf(s, t.x));
+  if (s.finished) return { done: true, n: TOTAL, total: TOTAL, result: s.id, ...(provesOwner(t) && { owner: await ownerTokenFor(s.id) }) };
+  if (!s.topics) return askTopics(s.id, 0);
+  return next(s.id, s.answers.length + 1, topicAxes(s.topics));
+}
+
 /** picked: choice ids, or null to skip the question. */
 export async function answer(token: string, picked: string[] | null): Promise<Step> {
-  const t = await verify(token);
-  if (!t) throw new QuizError('Sesiunea a expirat. Reia chestionarul.');
-  if (t.q === TOPIC_Q) return pickTopics(t, picked);
-  const q = QUESTIONS[t.q];
-  const round = t.x !== undefined ? { x: t.x, c: t.c ?? 0, g: !!t.g, k: t.k ?? '' } : null;
-  if (picked === null) {
-    await store.saveAnswer(t.s, { qid: t.q, picked: null, probe: !!t.pr, axis: q.axis, outlook: null });
-    return round ? roundNext(t.s, round) : next(t.s, stepOf(t) + 1, t.t ?? []);
+  // The signature only: whether the token may still answer is for current() to say.
+  const t = await verify(token, true);
+  if (!t || t.o) throw new QuizError('Sesiunea a expirat. Reia chestionarul.');
+  const s = await store.loadSession(t.s);
+  if (!s) throw new QuizError('Sesiunea a expirat. Reia chestionarul.');
+  const round: Round | null = t.x !== undefined ? { x: t.x, c: t.c ?? 0, g: !!t.g, k: t.k ?? '' } : null;
+  const onward = () => (round ? roundNext(t.s, round) : next(t.s, stepOf(t) + 1, t.t ?? []));
+
+  // A wrong answer is turned down before the question is taken, so it can simply be sent again.
+  if (t.q === TOPIC_Q) {
+    checkTopics(picked);
+    if (!(await current(s, t, token))) return resume(t);
+    await store.setTopics(t.s, picked);
+    // They rotate in the order you picked them.
+    return next(t.s, t.n + 1, topicAxes(picked));
   }
+  const q = QUESTIONS[t.q];
+  if (!q) return (await current(s, t, token)) ? onward() : resume(t); // left the pool since it was asked
+  let chosen: Choice[] = [];
+  if (picked !== null) {
+    const max = q.type === 'multi' ? (q.maxSelect ?? q.choices.length) : 1;
+    chosen = q.choices.filter((c) => picked.includes(c.id));
+    if (!chosen.length || chosen.length > max || chosen.length !== new Set(picked).size) throw new QuizError('Răspuns invalid.');
+    if (chosen.some((c) => c.id === 'na') && chosen.length > 1) throw new QuizError('Răspuns invalid.');
+  }
+  if (!(await current(s, t, token))) return resume(t);
 
-  const max = q.type === 'multi' ? (q.maxSelect ?? q.choices.length) : 1;
-  const chosen = q.choices.filter((c) => picked.includes(c.id));
-  if (!chosen.length || chosen.length > max || chosen.length !== new Set(picked).size) throw new QuizError('Răspuns invalid.');
-  if (chosen.some((c) => c.id === 'na') && chosen.length > 1) throw new QuizError('Răspuns invalid.');
-
+  if (picked === null) {
+    if (!(await store.saveAnswer(t.s, { qid: t.q, picked: null, probe: !!t.pr, axis: q.axis, outlook: null }))) throw new QuizError('Nu se poate.');
+    return onward();
+  }
   const value = outlookOf(t.q, picked);
   const saved = { qid: t.q, picked: chosen.map((c) => c.id), probe: !!t.pr, axis: q.axis, outlook: value };
   if (!round) {
-    await store.saveAnswer(t.s, saved);
+    if (!(await store.saveAnswer(t.s, saved))) throw new QuizError('Nu se poate.');
     return next(t.s, stepOf(t) + 1, t.t ?? []);
   }
   // A round's answer (the session is finished, so it counts in the averages at once) moves the
@@ -390,7 +475,7 @@ export async function answer(token: string, picked: string[] | null): Promise<St
   } catch (e) {
     console.error('round: expected scores not updated for', t.s, e);
   }
-  await store.saveAnswer(t.s, saved, after);
+  if (!(await store.saveAnswer(t.s, saved, after))) throw new QuizError('Nu se poate.');
   return roundNext(t.s, { ...round, c: round.c + 1, g: round.g || value !== null });
 }
 
@@ -457,14 +542,15 @@ async function finish(session: string, n: number): Promise<Step> {
     console.error('finish: expected scores not computed for', session, e);
   }
   await store.finishSession(session, expected);
-  return { done: true, n, total: TOTAL, result: session };
+  return { done: true, n, total: TOTAL, result: session, owner: await ownerTokenFor(session) };
 }
 
-/** Delete your result: the session and its answers, and so its part in the averages. */
-export async function deleteSession(token: string) {
-  const t = await verify(token, true);
-  if (!t) throw new QuizError('Sesiunea a expirat.');
-  if (!(await store.deleteSession(t.s))) throw new QuizError('Nu se poate.');
+/** Delete your result: the session and its answers, and so its part in the averages. Its id. */
+export async function deleteSession(token: string): Promise<string> {
+  const id = await ownerOf(token);
+  if (!id) throw new QuizError('Sesiunea a expirat.');
+  if (!(await store.deleteSession(id))) throw new QuizError('Nu se poate.');
+  return id;
 }
 
 export type Result = {
